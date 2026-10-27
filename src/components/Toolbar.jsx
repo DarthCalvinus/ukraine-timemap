@@ -1,5 +1,5 @@
-import { Component } from "react";
-import { connect } from "react-redux";
+import React, { useState } from "react";
+import { useSelector, useDispatch } from "react-redux";
 import { bindActionCreators } from "redux";
 import * as actions from "../actions";
 import * as selectors from "../selectors";
@@ -26,31 +26,49 @@ import { ToolbarButton } from "./controls/atoms/ToolbarButton";
 import { FullscreenToggle } from "./controls/FullScreenToggle";
 import DownloadPanel from "./controls/DownloadPanel";
 
-class Toolbar extends Component {
-  constructor(props) {
-    super(props);
-    this.onSelectFilter = this.onSelectFilter.bind(this);
-    this.state = { _selected: 0, _active: false };
-  }
+export default function Toolbar({ methods, isNarrative }) {
+  const dispatch = useDispatch();
+  const boundActions = bindActionCreators(actions, dispatch);
 
-  selectTab(selected) {
-    let active = true;
-    if (this.state._selected === selected && this.state._active === true) {
-      active = false;
+  const [selected, setSelected] = useState(0);
+  const [active, setActive] = useState(false);
+
+  // Redux state selectors
+  const filters = useSelector(selectors.getFilters);
+  const categories = useSelector(selectors.getCategories);
+  const narratives = useSelector(selectors.selectNarratives);
+  const shapes = useSelector(selectors.getShapes);
+  const language = useSelector((state) => state.app.language);
+  const toolbarCopy = useSelector((state) => state.app.toolbar);
+  const activeFilters = useSelector(selectors.getActiveFilters);
+  const activeCategories = useSelector(selectors.getActiveCategories);
+  const activeShapes = useSelector(selectors.getActiveShapes);
+  const coloringSet = useSelector((state) => state.app.associations.coloringSet);
+  const maxNumOfColors = useSelector((state) => state.ui.coloring.maxNumOfColors);
+  const filterColors = useSelector((state) => state.ui.coloring.colors);
+  const sitesShowing = useSelector((state) => state.app.flags.isShowingSites);
+  const infoShowing = useSelector((state) => state.app.flags.isInfopopup);
+  const features = useSelector(selectors.getFeatures);
+  const domain = useSelector((state) => state.domain); // Assuming domain is stored here
+
+  const selectTab = (tabIndex) => {
+    let newActive = true;
+    if (selected === tabIndex && active === true) {
+      newActive = false;
     }
-    this.setState({ _selected: selected, _active: active });
-  }
+    setSelected(tabIndex);
+    setActive(newActive);
+  };
 
-  onSelectFilter(key, matchingKeys) {
-    const { filters, activeFilters, coloringSet, maxNumOfColors } = this.props;
-
+  const onSelectFilter = (key, matchingKeys) => {
+    let updatedMatchingKeys = [...matchingKeys];
     const parent = getImmediateFilterParent(key);
     const isTurningOff = activeFilters.includes(key);
 
     if (!isTurningOff) {
-      const updatedColoringSet = addToColoringSet(coloringSet, matchingKeys);
+      const updatedColoringSet = addToColoringSet(coloringSet, updatedMatchingKeys);
       if (updatedColoringSet.length <= maxNumOfColors) {
-        this.props.actions.updateColoringSet(updatedColoringSet);
+        boundActions.updateColoringSet(updatedColoringSet);
       }
     } else {
       if (parent && activeFilters.includes(parent)) {
@@ -67,68 +85,50 @@ class Toolbar extends Component {
           const grandparentsOn = getFilterAncestors(key).filter((filt) =>
             activeFilters.includes(filt)
           );
-          matchingKeys = matchingKeys.concat(grandparentsOn);
+          updatedMatchingKeys = updatedMatchingKeys.concat(grandparentsOn);
         }
       }
 
-      const updatedColoringSet = removeFromColoringSet(
-        coloringSet,
-        matchingKeys
-      );
-      this.props.actions.updateColoringSet(updatedColoringSet);
+      const updatedColoringSet = removeFromColoringSet(coloringSet, updatedMatchingKeys);
+      boundActions.updateColoringSet(updatedColoringSet);
     }
-    this.props.methods.onSelectFilter(matchingKeys);
-    this.props.actions.updateSelected([]);
-  }
+    methods.onSelectFilter(updatedMatchingKeys);
+    boundActions.updateSelected([]);
+  };
 
-  renderClosePanel() {
-    return (
-      <div
-        className="panel-header"
-        onClick={() => this.selectTab(this.state._selected)}
-      >
-        <div className="caret" />
-      </div>
-    );
-  }
+  const renderClosePanel = () => (
+    <div className="panel-header" onClick={() => selectTab(selected)}>
+      <div className="caret" />
+    </div>
+  );
 
-  goToNarrative(narrative) {
-    // this.selectTab(-1); // set all unselected within this component
-    this.props.methods.onSelectNarrative(narrative);
-  }
+  const goToNarrative = (narrative) => {
+    methods.onSelectNarrative(narrative);
+  };
 
-  renderToolbarNarrativePanel() {
-    const { panels } = this.props.toolbarCopy;
+  const renderToolbarNarrativePanel = () => {
+    const { panels } = toolbarCopy;
     return (
       <TabPanel>
         <h2>{panels.narratives.label}</h2>
         <p>{panels.narratives.description}</p>
-        {this.props.narratives.map((narr) => {
-          return (
-            <div className="panel-action action">
-              <button
-                onClick={() => {
-                  this.goToNarrative(narr);
-                }}
-              >
-                <p>{narr.id}</p>
-                <p>
-                  <small>{trimAndEllipse(narr.desc, 120)}</small>
-                </p>
-              </button>
-            </div>
-          );
-        })}
+        {narratives.map((narr, idx) => (
+          <div key={idx} className="panel-action action">
+            <button onClick={() => goToNarrative(narr)}>
+              <p>{narr.id}</p>
+              <p>
+                <small>{trimAndEllipse(narr.desc, 120)}</small>
+              </p>
+            </button>
+          </div>
+        ))}
       </TabPanel>
     );
-  }
+  };
 
-  renderToolbarCategoriesPanel() {
-    const { categories: panelCategories } = this.props.toolbarCopy.panels;
-    const catMap = mapCategoriesToPaths(
-      this.props.categories,
-      Object.keys(panelCategories)
-    );
+  const renderToolbarCategoriesPanel = () => {
+    const { categories: panelCategories } = toolbarCopy.panels;
+    const catMap = mapCategoriesToPaths(categories, Object.keys(panelCategories));
 
     return (
       <div>
@@ -138,9 +138,9 @@ class Toolbar extends Component {
             <TabPanel key={type}>
               <CategoriesListPanel
                 categories={children}
-                activeCategories={this.props.activeCategories}
-                onCategoryFilter={this.props.methods.onCategoryFilter}
-                language={this.props.language}
+                activeCategories={activeCategories}
+                onCategoryFilter={methods.onCategoryFilter}
+                language={language}
                 title={panelCategories[type].label}
                 description={panelCategories[type].description}
               />
@@ -149,137 +149,96 @@ class Toolbar extends Component {
         })}
       </div>
     );
-  }
+  };
 
-  renderToolbarFilterPanel() {
-    const { panels } = this.props.toolbarCopy;
+  const renderToolbarFilterPanel = () => {
+    const { panels } = toolbarCopy;
     return (
       <TabPanel>
         <FilterListPanel
-          filters={this.props.filters}
-          activeFilters={this.props.activeFilters}
-          onSelectFilter={this.onSelectFilter}
-          language={this.props.language}
-          coloringSet={this.props.coloringSet}
-          filterColors={this.props.filterColors}
+          filters={filters}
+          activeFilters={activeFilters}
+          onSelectFilter={onSelectFilter}
+          language={language}
+          coloringSet={coloringSet}
+          filterColors={filterColors}
           title={panels.filters.label}
           description={panels.filters.description}
         />
       </TabPanel>
     );
-  }
+  };
 
-  renderToolbarShapePanel() {
-    const { panels } = this.props.toolbarCopy;
-
-    if (this.props.features.USE_SHAPES) {
-      return (
-        <TabPanel>
-          <ShapesListPanel
-            shapes={this.props.shapes}
-            activeShapes={this.props.activeShapes}
-            onShapeFilter={this.props.methods.onShapeFilter}
-            language={this.props.language}
-            title={panels.shapes.label}
-            description={panels.shapes.description}
-          />
-        </TabPanel>
-      );
-    }
-  }
-
-  renderToolbarDownloadPanel() {
-    const { panels } = this.props.toolbarCopy;
+  const renderToolbarShapePanel = () => {
+    const { panels } = toolbarCopy;
+    if (!features.USE_SHAPES) return null;
 
     return (
       <TabPanel>
-        <DownloadPanel
-          language={this.props.language}
-          title={panels.download.label}
-          description={panels.download.description}
-          domain={this.props.domain}
+        <ShapesListPanel
+          shapes={shapes}
+          activeShapes={activeShapes}
+          onShapeFilter={methods.onShapeFilter}
+          language={language}
+          title={panels.shapes.label}
+          description={panels.shapes.description}
         />
       </TabPanel>
     );
-  }
+  };
 
-  renderToolbarTab(_selected, label, iconKey, key) {
+  const renderToolbarDownloadPanel = () => {
+    const { panels } = toolbarCopy;
     return (
-      <ToolbarButton
-        key={key}
-        label={label}
-        iconKey={iconKey}
-        isActive={
-          this.state._selected === _selected && this.state._active === true
-        }
-        onClick={() => {
-          this.selectTab(_selected);
-        }}
-      />
+      <TabPanel>
+        <DownloadPanel
+          language={language}
+          title={panels.download.label}
+          description={panels.download.description}
+          domain={domain}
+        />
+      </TabPanel>
     );
-  }
+  };
 
-  renderToolbarCategoryTabs(idxs) {
-    const { categories: panelCategories } = this.props.toolbarCopy.panels;
+  const renderToolbarTab = (tabIndex, label, iconKey, key) => (
+    <ToolbarButton
+      key={key}
+      label={label}
+      iconKey={iconKey}
+      isActive={selected === tabIndex && active === true}
+      onClick={() => selectTab(tabIndex)}
+    />
+  );
+
+  const renderToolbarCategoryTabs = (idxs) => {
+    const { categories: panelCategories } = toolbarCopy.panels;
     return (
       <div>
-        {Object.keys(idxs).map((key) => {
-          return this.renderToolbarTab(
-            idxs[key],
-            panelCategories[key].label,
-            panelCategories[key].icon,
-            key
-          );
-        })}
+        {Object.keys(idxs).map((key) =>
+          renderToolbarTab(idxs[key], panelCategories[key].label, panelCategories[key].icon, key)
+        )}
       </div>
     );
-  }
+  };
 
-  renderToolbarPanels() {
-    const { features, narratives } = this.props;
-    const classes =
-      this.state._active === true ? "toolbar-panels" : "toolbar-panels folded";
+  const renderToolbarPanels = () => {
+    const panelClasses = active === true ? "toolbar-panels" : "toolbar-panels folded";
     return (
-      <div className={classes}>
-        {this.renderClosePanel()}
-        {narratives && narratives.length !== 0
-          ? this.renderToolbarNarrativePanel()
-          : null}
-        {features.USE_CATEGORIES ? this.renderToolbarCategoriesPanel() : null}
-        {features.USE_ASSOCIATIONS ? this.renderToolbarFilterPanel() : null}
-        {features.USE_SHAPES ? this.renderToolbarShapePanel() : null}
-        {features.USE_DOWNLOAD ? this.renderToolbarDownloadPanel() : null}
+      <div className={panelClasses}>
+        {renderClosePanel()}
+        {narratives && narratives.length !== 0 && renderToolbarNarrativePanel()}
+        {features.USE_CATEGORIES && renderToolbarCategoriesPanel()}
+        {features.USE_ASSOCIATIONS && renderToolbarFilterPanel()}
+        {features.USE_SHAPES && renderToolbarShapePanel()}
+        {features.USE_DOWNLOAD && renderToolbarDownloadPanel()}
       </div>
     );
-  }
+  };
 
-  renderToolbarNavs() {
-    if (this.props.narratives) {
-      return this.props.narratives.map((nar, idx) => {
-        const isActive =
-          idx === this.state._selected && this.state._active === true;
-
-        const classes = isActive ? "toolbar-tab active" : "toolbar-tab";
-
-        return (
-          <div
-            className={classes}
-            onClick={() => {
-              this.selectTab(idx);
-            }}
-          >
-            <div className="tab-caption">{nar.label}</div>
-          </div>
-        );
-      });
-    }
-    return null;
-  }
-
-  renderToolbarTabs() {
-    const { features, narratives, toolbarCopy } = this.props;
+  const renderToolbarTabs = () => {
     const narrativesExist = narratives && narratives.length !== 0;
-    let title = copy[this.props.language].toolbar.title;
+    let title = copy[language]?.toolbar.title || "";
     if (config.display_title) title = config.display_title;
     const { panels } = toolbarCopy;
 
@@ -289,127 +248,50 @@ class Toolbar extends Component {
       narrativesExist ? 1 : 0
     );
     const numCategoryPanels = Object.keys(categoryIdxs).length;
-    const filtersIdx = getFilterIdx(
-      narrativesExist,
-      features.USE_CATEGORIES,
-      numCategoryPanels || 0
-    );
+    const filtersIdx = getFilterIdx(narrativesExist, features.USE_CATEGORIES, numCategoryPanels || 0);
     const shapesIdx = filtersIdx + features.USE_SHAPES;
     const downloadIdx = shapesIdx + features.USE_DOWNLOAD;
 
     return (
       <div className="toolbar">
-        <div className="toolbar-header" onClick={this.props.methods.onTitle}>
+        <div className="toolbar-header" onClick={methods.onTitle}>
           <p>{title}</p>
         </div>
         <div className="toolbar-tabs">
           <TabList>
-            {narrativesExist
-              ? this.renderToolbarTab(
-                  narrativesIdx,
-                  panels.narratives.label,
-                  panels.narratives.icon
-                )
-              : null}
-            {features.USE_CATEGORIES
-              ? this.renderToolbarCategoryTabs(categoryIdxs)
-              : null}
-            {features.USE_ASSOCIATIONS
-              ? this.renderToolbarTab(
-                  filtersIdx,
-                  panels.filters.label,
-                  panels.filters.icon
-                )
-              : null}
-            {features.USE_SHAPES
-              ? this.renderToolbarTab(
-                  shapesIdx,
-                  panels.shapes.label,
-                  panels.shapes.icon
-                )
-              : null}
-            {features.USE_DOWNLOAD
-              ? this.renderToolbarTab(
-                  downloadIdx,
-                  panels.download.label,
-                  panels.download.icon
-                )
-              : null}
-            {features.USE_FULLSCREEN && (
-              <FullscreenToggle language={this.props.language} />
-            )}
+            {narrativesExist &&
+              renderToolbarTab(narrativesIdx, panels.narratives.label, panels.narratives.icon, "narratives")}
+            {features.USE_CATEGORIES && renderToolbarCategoryTabs(categoryIdxs)}
+            {features.USE_ASSOCIATIONS &&
+              renderToolbarTab(filtersIdx, panels.filters.label, panels.filters.icon, "filters")}
+            {features.USE_SHAPES &&
+              renderToolbarTab(shapesIdx, panels.shapes.label, panels.shapes.icon, "shapes")}
+            {features.USE_DOWNLOAD &&
+              renderToolbarTab(downloadIdx, panels.download.label, panels.download.icon, "download")}
+            {features.USE_FULLSCREEN && <FullscreenToggle language={language} />}
           </TabList>
         </div>
         <BottomActions
-          info={{
-            enabled: this.props.infoShowing,
-            toggle: this.props.actions.toggleInfoPopup,
-          }}
-          sites={{
-            enabled: this.props.sitesShowing,
-            toggle: this.props.actions.toggleSites,
-          }}
-          cover={{
-            toggle: this.props.actions.toggleCover,
-          }}
-          features={this.props.features}
+          info={{ enabled: infoShowing, toggle: boundActions.toggleInfoPopup }}
+          sites={{ enabled: sitesShowing, toggle: boundActions.toggleSites }}
+          cover={{ toggle: boundActions.toggleCover }}
+          features={features}
         />
-
         <div id="made-with">
-          Made with{" "}
-          <a href="https://github.com/forensic-architecture/timemap">TimeMap</a>
+          Made with <a href="https://github.com/forensic-architecture/timemap">TimeMap</a>
           <br />
-          Free software from{" "}
-          <a href="https://forensic-architecture.org">Forensic Architecture</a>
+          Free software from <a href="https://forensic-architecture.org">Forensic Architecture</a>
         </div>
       </div>
     );
-  }
-
-  render() {
-    const { isNarrative } = this.props;
-
-    return (
-      <div
-        id="toolbar-wrapper"
-        className={`toolbar-wrapper ${isNarrative ? "narrative-mode" : ""}`}
-      >
-        <Tabs onSelect={() => null} selectedIndex={this.state._selected}>
-          {this.renderToolbarTabs()}
-          {this.renderToolbarPanels()}
-        </Tabs>
-      </div>
-    );
-  }
-}
-
-function mapStateToProps(state) {
-  return {
-    filters: selectors.getFilters(state),
-    categories: selectors.getCategories(state),
-    narratives: selectors.selectNarratives(state),
-    shapes: selectors.getShapes(state),
-    language: state.app.language,
-    toolbarCopy: state.app.toolbar,
-    activeFilters: selectors.getActiveFilters(state),
-    activeCategories: selectors.getActiveCategories(state),
-    activeShapes: selectors.getActiveShapes(state),
-    viewFilters: state.app.associations.views,
-    narrative: state.app.associations.narrative,
-    sitesShowing: state.app.flags.isShowingSites,
-    infoShowing: state.app.flags.isInfopopup,
-    coloringSet: state.app.associations.coloringSet,
-    maxNumOfColors: state.ui.coloring.maxNumOfColors,
-    filterColors: state.ui.coloring.colors,
-    eventRadius: state.ui.eventRadius,
-    features: selectors.getFeatures(state),
   };
-}
 
-function mapDispatchToProps(dispatch) {
-  return {
-    actions: bindActionCreators(actions, dispatch),
-  };
+  return (
+    <div id="toolbar-wrapper" className={`toolbar-wrapper ${isNarrative ? "narrative-mode" : ""}`}>
+      <Tabs onSelect={() => null} selectedIndex={selected}>
+        {renderToolbarTabs()}
+        {renderToolbarPanels()}
+      </Tabs>
+    </div>
+  );
 }
-
-export default connect(mapStateToProps, mapDispatchToProps)(Toolbar);
